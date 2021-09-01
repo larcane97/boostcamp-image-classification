@@ -4,6 +4,20 @@ import torch.nn.functional as F
 import timm.loss
 from sklearn.metrics import f1_score
 import sklearn
+import numpy as np
+import os
+import random
+
+def seed_everything(seed):
+    ''' Fix Random Seed '''
+    random.seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = True
+seed_everything(1010)
 
 class SoftTargetCrossEntropy(nn.Module):
     def __init__(SoftTargetCrossEntropy,self):

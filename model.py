@@ -6,9 +6,21 @@ import timm
 import albumentations
 import numpy as np
 import sys,os
+import random
 
 sys.path.append(os.path.dirname(os.path.abspath(os.path.dirname('ml'))))
 from fixresnet.FixRes.imnet_evaluate import resnext_wsl
+
+def seed_everything(seed):
+    ''' Fix Random Seed '''
+    random.seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = True
+seed_everything(1010)
 
 
 class LinearBlock(nn.Module):
@@ -100,7 +112,6 @@ class MultiDropoutLinearBlock(nn.Module):
         self.outdim=outdim
         self.p=p
         self.linear = nn.Linear(indim,outdim).to(device)
-        self.batchnorm = nn.BatchNorm1d(indim).to(device)
         self.drop_num=drop_num
 
 
@@ -147,14 +158,7 @@ class MultiDropoutEfficientLite0(nn.Module):
         self.device=device
         self.classes=classes
         self.backbone = timm.create_model('efficientnet_lite0',True).to(device)
-        self.backbone.classifier = MultiDropoutLinearBlock(1792,classes,drop_num=drop_num,p=p).to(device)
-#         self.classifier = nn.Sequential(
-#             MultiDropoutLinear(1000,500),
-#             MultiDropoutLinear(500,256),
-# #             MultiDropoutLinear(256,128),
-# #             MultiDropoutLinear(128,64),
-#             MultiDropoutLinear(256,100),
-#             MultiDropoutLinear(100,self.classes)).to(device)
+        self.backbone.classifier = MultiDropoutLinearBlock(1280,classes,drop_num=drop_num,p=p).to(device)
     
     def forward(self,x):
         return self.backbone(x)

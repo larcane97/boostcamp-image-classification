@@ -8,23 +8,50 @@ import os
 import albumentations
 import albumentations.pytorch
 import ttach as tta
+import os
+import random
+
+def seed_everything(seed):
+    ''' Fix Random Seed '''
+    random.seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = True
+seed_everything(1010)
+
 
 class MaskAugmentation:
     def __init__(self,image_size=[256,256]):
         self.transforms={
-            'train': albumentations.Compose([
-                            albumentations.Resize(image_size[0],image_size[1]),
-                            #albumentations.RandomCrop(224,224),
-                            albumentations.CenterCrop(int(image_size[0]/0.875),int(image_size[1]/0.875)),
+            # 'train': albumentations.Compose([
+            #                 albumentations.Resize(image_size[0],image_size[1]),
+            #                 #albumentations.RandomCrop(224,224),
+            #                 albumentations.CenterCrop(int(image_size[0]*0.875),int(image_size[1]*0.875)),
+            #                 albumentations.ColorJitter(),
+            #                 albumentations.HorizontalFlip(),
+            #                 albumentations.Normalize(),
+            #                 albumentations.pytorch.ToTensorV2(),
+            #                ]),
+            'train' : albumentations.Compose([
+                            albumentations.Resize(256,256),
+                            albumentations.CenterCrop(224,224),
                             albumentations.ColorJitter(),
-                            albumentations.HorizontalFlip(),
                             albumentations.Normalize(),
-                            albumentations.pytorch.ToTensorV2(),
-                           ]),
+                            albumentations.GaussNoise(var_limit=(0.001,0.01)),
+                            albumentations.CoarseDropout(max_height=15,max_width=15),
+                            albumentations.RandomBrightnessContrast(),
+                            albumentations.Rotate(15),
+                            albumentations.HorizontalFlip(),
+                            albumentations.pytorch.ToTensorV2()]),
+
             'validation' : albumentations.Compose([
                             albumentations.Resize(image_size[0],image_size[1]),
                             albumentations.Normalize(),
                             albumentations.pytorch.ToTensorV2()]),
+                            
             'tta' : tta.Compose([
                             tta.HorizontalFlip()
             ])

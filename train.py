@@ -1,3 +1,6 @@
+import wandb
+import pickle
+import json
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -6,10 +9,8 @@ from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 import torchvision
 from torchvision import transforms
-import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
-from PIL import Image
 import os
 import sys
 import pathlib
@@ -33,20 +34,6 @@ import loss
 
 warnings.filterwarnings('ignore')
 
-config={
-    'model': "MultiDropoutEfficientB4",
-    'EPOCHS' : 30,
-    'VAL_RATIO' : 0.2,
-    'loss' : "FocalLoss",
-    'optimizer' : "AdamW",
-    'lr' : 1e-2,
-    'train_dir' :'/opt/ml/input/data/train',
-    "test_dir" : "/opt/ml/input/data/eval",
-    'file_name' : 'AddData_AdamW_SoftTarget_SiLU_NoClassifier_Mixup_HyperMultiDropoutEfficientB4',
-    'batch_size' : 32,
-    'load_dir' : '',
-    'image_size':[256,256]
-}
 
 def seed_everything(seed):
     ''' Fix Random Seed '''
@@ -59,6 +46,9 @@ def seed_everything(seed):
     torch.backends.cudnn.benchmark = True
 
 def train(config):
+    print('='*100)
+    print('start...')
+    print(config)
     ## Random seed configuration
     seed_everything(1010)
 
@@ -131,7 +121,7 @@ def train(config):
         ''' [수정] model config json 추가!!'''
         net = getattr(model,config.model)(device=device) 
         print('='*100)
-        print(f"{i+1}_model : [{model.name}]")
+        print(f"{i+1}_model : [{net.name}]")
 
         # Other Define
         criterion = getattr(loss,config.criterion)()
@@ -140,13 +130,18 @@ def train(config):
         ''' [수정] lr_scheduler config json 추가 '''
         scheduler = getattr(optim.lr_scheduler,config.lr_scheduler)(optm,max_lr=0.1, epochs=EPOCHS, steps_per_epoch = len(train_loader))
 
+        # for Logging(Wandb)
+        wandb.init(config=config,entity='larcane',project='ai_boostcamp_p_stage_mask_classification',
+               group=config.file_name,name=f"{i+1}_model")
+        wandb.watch(net, log_freq=PRINT,criterion=criterion,log='gradients',idx=i,log_graph=True)
+
         # for early stopping
-        patience = 8
+        patience = 6
         couonter=0
         # for saving best model parameter
         best_f1_score = -np.inf
 
-        for epoch in tqdm(range(EPOCHS)):
+        for epoch in range(EPOCHS):
             torch.cuda.empty_cache()
             net.train()
             # for logging
@@ -166,6 +161,7 @@ def train(config):
 
                 # loss calc
                 loss_out = criterion(y_pred,y_true)
+                loss_list.append(loss_out.item())
 
                 y_pred = y_pred.argmax(-1)
                 if MIX_UP:
@@ -184,10 +180,11 @@ def train(config):
                     train_f1 = np.mean(f1_list)
                     train_loss = np.mean(loss_list)
                     print(
-                    f"Epoch[{epoch}/{EPOCHS}]({idx + 1}/{len(train_loader)}) || "
+                    f"Epoch[{epoch+1:4}/{EPOCHS:4}]({idx + 1}/{len(train_loader)}) || "
                     f"training loss {train_loss:4.4} || training accuracy {train_acc:4.2%} || f1 score {train_f1:.2f}")
-
                     '''[수정] WandB or TensorBoard 추가 '''
+                    wandb.log({'train_loss':train_loss, 'train_accuracy':train_acc, 'train_f1':train_f1})
+                    
 
                     loss_list = []
                     f1_list= []
@@ -228,24 +225,22 @@ def train(config):
                     acc_items_list[0] +=(y_pred==y_true).sum().item() # correct num
                     acc_items_list[1] +=len(y_pred) # total num
                     # f1 score calc
-                    f1_list.append(f1_score(y_true,y_pred,avarage='macro').item())
+                    f1_list.append(f1_score(y_true,y_pred,average='macro').item())
                 
                 val_acc = float(acc_items_list[0]/acc_items_list[1])
                 val_f1 = np.mean(f1_list)
                 val_loss = np.mean(loss_list)
+                wandb.log({'validation_loss':val_loss, 'valication_accuracy':val_acc, 'validation_f1':val_f1})
 
                 ## Callback function : earuly stopping & best f1 score model saving
                 if best_f1_score < val_f1:
                     print(f"New best validation f1 score !, save {i+1}_model in results/{file_name}")
-                    print(
-                    f"Epoch[{epoch}/{EPOCHS}]({idx + 1}/{len(train_loader)}) || "
-                    f"training loss {train_loss:4.4} || training accuracy {train_acc:4.2%} || f1 score {train_f1:.2f}")
                     best_f1_score = val_f1
-                    torch.save(net,f"results/{file_name}/{i+1}_{epoch:03}_f1_{val_f1:4.2f}.pt")
+                    torch.save(net.state_dict(),f"results/{file_name}/{i+1}_{epoch:03}_f1_{val_f1:4.2f}.pt")
                     counter=0
                 else:
                     counter+=1
-        
+                print(f"validation_loss {val_loss:4.4} || valication_accuracy {val_acc:4.2%} || validation_f1 {val_f1:.2f}")
                 ## early stopping
                 if counter > patience:
                     print(f'Early Stopping{i+1}_{epoch:03}...')
@@ -257,7 +252,7 @@ def train(config):
         with torch.no_grad():
             print('='*100)
             print('Testing..')
-            for image in tqdm(test_loader):
+            for image in test_loader:
                 image = image.to(device)
 
                 # Test Time Augmentation
@@ -274,6 +269,8 @@ def train(config):
                 pred = (tta_pred/len(tta_trsfm)).detach().cpu().numpy()
                 test_predictions.extend(pred)     
             fold_pred = np.array(test_predictions)
+            with open(f'/results/{file_name}/{i+1}_logits.pkl','wb') as f:
+                pickle.dump(fold_pred,f)
 
         if off_pred is None:
             off_pred = fold_pred/n_splits
@@ -282,37 +279,13 @@ def train(config):
     
     submission['ans'] = np.argmax(off_pred,axis=-1)
     submission.to_csv(f"results/{file_name}/submission.csv",index=False)
+    with open(f'./results/{file_name}/config.json','w') as f:
+        json.dump(args.__dict__,f)
+    with open(f'/results/{file_name}/logits.pkl','wb') as f:
+        pickle.dump(off_pred,f)
+
     print(f"saved result in results/{file_name}/submission.csv")
     print("Test Inference is done !!")
-
-
-        
-
-    
-        
-        
-
-                    
-
-
-
-    
-
-
-
-
-
-
-        
-        
-        
-
-
-
-
-
-    
-
 
 import argparse
 if __name__ == '__main__':
@@ -322,29 +295,25 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', type=str, default='MaskDataSet', help='dataset augmentation type (default: MaskDataSet)')
     parser.add_argument('--augmentation', type=str, default='MaskAugmentation', help='data augmentation type (default: MaskAugmentation)')
     parser.add_argument("--resize", nargs="+", type=list, default=[256, 256], help='resize size for image when training')
-    parser.add_argument('--batch_size', type=int, default=32, help='input batch size for training (default: 32)')
+    parser.add_argument('--batch_size', type=int, default=128, help='input batch size for training (default: 128)')
     parser.add_argument('--kfold_splits', type=int, default=5, help='input k-fold splits number for cross validation (default: 5)')
-    parser.add_argument('--model', type=str, default='MultiDropoutEfficientNet', help='model type (default: MultiDropoutEfficientNet)')
-    parser.add_argument('--optimizer', type=str, default='Adam', help='optimizer type (default: Adam)')
-    parser.add_argument('--lr', type=float, default=1e-3, help='learning rate (default: 1e-3)')
+    parser.add_argument('--model', type=str, default='MultiDropoutEfficientLite0', help='model type (default: MultiDropoutEfficientLite0)')
+    parser.add_argument('--optimizer', type=str, default='AdamW', help='optimizer type (default: AdamW)')
+    parser.add_argument('--lr', type=float, default=1e-2, help='learning rate (default: 1e-2)')
     #parser.add_argument('--val_ratio', type=float, default=0.2, help='ratio for validaton (default: 0.2)')
-    parser.add_argument('--criterion', type=str, default='cross_entropy', help='criterion type (default: cross_entropy)')
+    parser.add_argument('--criterion', type=str, default='FocalLoss', help='criterion type (default: FocalLoss)')
     parser.add_argument('--weight_decay', type=int, default=1e-4, help='Weight decay for optimizer (default: 1e-4)')
     parser.add_argument('--lr_decay_step', type=int, default=20, help='learning rate scheduler deacy step (default: 20)')
     parser.add_argument('--lr_scheduler', type=str, default='OneCycleLR', help='learning scheduler (default: OneCycleLR)')
-    parser.add_argument('--log_interval', type=int, default=10, help='how many batches to wait before logging training status')
+    parser.add_argument('--log_interval', type=int, default=100, help='how many batches to wait before logging training status')
     parser.add_argument('--file_name', default='exp', help='model save at {results}/{file_name}')
     parser.add_argument('--train_csv', default='/opt/ml/input/data/allconcat.csv', help='train data saved csv')
     parser.add_argument('--test_dir', default="/opt/ml/input/data/eval", help='test data saved directory')
     parser.add_argument('--mix_up', type=bool, default=False, help='if True, mix-up & cut-mix use')
-    parser.add_argument('--class_num',type=int,default=18,help='input the number of class')
+    parser.add_argument('--num_class',type=int,default=18,help='input the number of class')
     # Container environment
     parser.add_argument('--data_dir', type=str, default=os.environ.get('SM_CHANNEL_TRAIN', '/opt/ml/input/data/train/images'))
     parser.add_argument('--model_dir', type=str, default=os.environ.get('SM_MODEL_DIR', './model'))
 
     args = parser.parse_args()
-    print('='*100)
-    print('start...')
-    print(args)
-
     train(args)
