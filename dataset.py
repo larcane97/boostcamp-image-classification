@@ -20,7 +20,7 @@ def seed_everything(seed):
     torch.cuda.manual_seed(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = True
-seed_everything(42)
+seed_everything(1010)
 
 
 class MaskAugmentation:
