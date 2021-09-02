@@ -50,7 +50,7 @@ def train(config):
     print('start...')
     print(config)
     ## Random seed configuration
-    seed_everything(1010)
+    seed_everything(config.seed)
 
     ## device configuration
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -75,7 +75,10 @@ def train(config):
     CLASSES = config.num_class
 
     # dataset configuration
-    mask_dataset = dataset.MaskDataSet(config.train_csv)
+    if config.pseudo_label:
+        mask_dataset = dataset.PseudoMaskDataSet(config.train_csv,config.pseudo_csv)
+    else:
+        mask_dataset = dataset.MaskDataSet(config.train_csv)
     
     test_dir = pathlib.Path(config.test_dir)
     submission = pd.read_csv(test_dir/'info.csv')
@@ -88,11 +91,11 @@ def train(config):
     ''' [수정] mixup_args config json'''
     if MIX_UP:
         mixup_args = {
-        'mixup_alpha': 0.3,
+        'mixup_alpha': 0.,
         'cutmix_alpha': 0.3,
         'cutmix_minmax': None,
         'prob': 0.5,
-        'switch_prob': 0.5,
+        'switch_prob': 0.,
         'mode': 'elem',
         'label_smoothing': 0.1,
         'num_classes': 18}
@@ -113,9 +116,9 @@ def train(config):
         train_set = dataset.CustomSubset(mask_dataset,train_idx,train_trsfm)
         val_set = dataset.CustomSubset(mask_dataset,val_idx,val_trsfm)
         train_loader = torch.utils.data.DataLoader(train_set, batch_size=BATCH_SIZE,\
-             shuffle=True, num_workers=4, drop_last=True, pin_memory=torch.cuda.is_available())
+             shuffle=True, num_workers=4, drop_last=True)
         val_loader = torch.utils.data.DataLoader(val_set, batch_size=BATCH_SIZE,\
-            shuffle=True, num_workers=4, drop_last=True, pin_memory=torch.cuda.is_available())
+            shuffle=True, num_workers=4, drop_last=True)
         
         # Model Define
         ''' [수정] model config json 추가!!'''
@@ -124,22 +127,26 @@ def train(config):
         print(f"{i+1}_model : [{net.name}]")
 
         # Other Define
-        criterion = getattr(loss,config.criterion)()
+        if MIX_UP:
+            criterion = timm.loss.SoftTargetCrossEntropy()
+        else:
+            criterion = getattr(loss,config.criterion)()
         ''' [수정] optimzier config json 추가 '''
         optm = getattr(optim,config.optimizer)(net.parameters(),lr=LEARNING_RATE)
         ''' [수정] lr_scheduler config json 추가 '''
         scheduler = getattr(optim.lr_scheduler,config.lr_scheduler)(optm,max_lr=0.1, epochs=EPOCHS, steps_per_epoch = len(train_loader))
 
         # for Logging(Wandb)
-        wandb.init(config=config,entity='larcane',project='ai_boostcamp_p_stage_mask_classification',
-               group=config.file_name,name=f"{i+1}_model")
-        wandb.watch(net, log_freq=PRINT,criterion=criterion,log='gradients',idx=i,log_graph=True)
+        if config.wandb:
+            wandb.init(config=config,entity='larcane',project='ai_boostcamp_p_stage_mask_classification',
+                group=config.file_name,name=f"{i+1}_model")
+            wandb.watch(net)
 
         # for early stopping
         patience = 6
         couonter=0
         # for saving best model parameter
-        best_f1_score = -np.inf
+        best_val_loss = np.inf
 
         for epoch in range(EPOCHS):
             torch.cuda.empty_cache()
@@ -156,8 +163,6 @@ def train(config):
 
                 y_pred = net.forward(batch_in)
                 y_true = batch_out # for renaming
-                if MIX_UP:
-                    y_true = F.one_hot(y_true,CLASSES)
 
                 # loss calc
                 loss_out = criterion(y_pred,y_true)
@@ -183,7 +188,8 @@ def train(config):
                     f"Epoch[{epoch+1:4}/{EPOCHS:4}]({idx + 1}/{len(train_loader)}) || "
                     f"training loss {train_loss:4.4} || training accuracy {train_acc:4.2%} || f1 score {train_f1:.2f}")
                     '''[수정] WandB or TensorBoard 추가 '''
-                    wandb.log({'train_loss':train_loss, 'train_accuracy':train_acc, 'train_f1':train_f1})
+                    if config.wandb:
+                        wandb.log({'train_loss':train_loss, 'train_accuracy':train_acc, 'train_f1':train_f1})
                     
 
                     loss_list = []
@@ -230,12 +236,13 @@ def train(config):
                 val_acc = float(acc_items_list[0]/acc_items_list[1])
                 val_f1 = np.mean(f1_list)
                 val_loss = np.mean(loss_list)
-                wandb.log({'validation_loss':val_loss, 'valication_accuracy':val_acc, 'validation_f1':val_f1})
+                if config.wandb:
+                    wandb.log({'validation_loss':val_loss, 'valication_accuracy':val_acc, 'validation_f1':val_f1})
 
                 ## Callback function : earuly stopping & best f1 score model saving
-                if best_f1_score < val_f1:
-                    print(f"New best validation f1 score !, save {i+1}_model in results/{file_name}")
-                    best_f1_score = val_f1
+                if best_val_loss > val_loss:
+                    print(f"New best validation loss !, save {i+1}_model in results/{file_name}")
+                    best_val_loss = val_loss
                     torch.save(net.state_dict(),f"results/{file_name}/{i+1}_{epoch:03}_f1_{val_f1:4.2f}.pt")
                     counter=0
                 else:
@@ -269,7 +276,7 @@ def train(config):
                 pred = (tta_pred/len(tta_trsfm)).detach().cpu().numpy()
                 test_predictions.extend(pred)     
             fold_pred = np.array(test_predictions)
-            with open(f'/results/{file_name}/{i+1}_logits.pkl','wb') as f:
+            with open(f'./results/{file_name}/{i+1}_logits.pkl','wb') as f:
                 pickle.dump(fold_pred,f)
 
         if off_pred is None:
@@ -281,11 +288,13 @@ def train(config):
     submission.to_csv(f"results/{file_name}/submission.csv",index=False)
     with open(f'./results/{file_name}/config.json','w') as f:
         json.dump(args.__dict__,f)
-    with open(f'/results/{file_name}/logits.pkl','wb') as f:
+    with open(f'./results/{file_name}/logits.pkl','wb') as f:
         pickle.dump(off_pred,f)
 
     print(f"saved result in results/{file_name}/submission.csv")
     print("Test Inference is done !!")
+    if config.wandb:
+        wandb.finish()
 
 import argparse
 if __name__ == '__main__':
@@ -305,15 +314,21 @@ if __name__ == '__main__':
     parser.add_argument('--weight_decay', type=int, default=1e-4, help='Weight decay for optimizer (default: 1e-4)')
     parser.add_argument('--lr_decay_step', type=int, default=20, help='learning rate scheduler deacy step (default: 20)')
     parser.add_argument('--lr_scheduler', type=str, default='OneCycleLR', help='learning scheduler (default: OneCycleLR)')
-    parser.add_argument('--log_interval', type=int, default=100, help='how many batches to wait before logging training status')
+    parser.add_argument('--log_interval', type=int, default=30, help='how many batches to wait before logging training status')
     parser.add_argument('--file_name', default='exp', help='model save at {results}/{file_name}')
-    parser.add_argument('--train_csv', default='/opt/ml/input/data/allconcat.csv', help='train data saved csv')
+    parser.add_argument('--train_csv', default='/opt/ml/input/data/train/new_standard.csv', help='train data saved csv')
     parser.add_argument('--test_dir', default="/opt/ml/input/data/eval", help='test data saved directory')
     parser.add_argument('--mix_up', type=bool, default=False, help='if True, mix-up & cut-mix use')
     parser.add_argument('--num_class',type=int,default=18,help='input the number of class')
+    parser.add_argument('--pseudo_label',type=bool,default=False,help='pseudo label usage')
+    parser.add_argument('--pseudo_csv',type=str,default='/opt/ml/input/data/train/pseudo.csv',help='pseudo label usage')
+    parser.add_argument('--wandb',type=bool,default=True,help='logging in WandB')
     # Container environment
     parser.add_argument('--data_dir', type=str, default=os.environ.get('SM_CHANNEL_TRAIN', '/opt/ml/input/data/train/images'))
     parser.add_argument('--model_dir', type=str, default=os.environ.get('SM_MODEL_DIR', './model'))
 
     args = parser.parse_args()
     train(args)
+
+
+
