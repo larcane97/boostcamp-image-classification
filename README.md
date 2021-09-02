@@ -373,7 +373,7 @@ full_data = MaskDataSet('input/data/train/train.csv','input/data/train/images',t
 
 → 이에 더해 `Dropout`도 적용해서 overfitting을 방지하고자 했다!
 
-![Untitled](4-5%20week%2066ae700c9f68497a97e77141cc4da194/Untitled%205.png)
+![Untitled](https://user-images.githubusercontent.com/70624819/131848410-61bed3db-71b6-497c-aab9-5e67bb06035b.png)
 
 > 위와 같이 적용했을 때의 f1 score가 0.934를 달성했지만, 실제 LB score는 0.6x 정도 나왔다..
 → **generalization이 부족했거나! test dataset이 실제와 많은 차이를 보이거나!**
