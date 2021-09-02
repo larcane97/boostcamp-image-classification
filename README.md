@@ -13,7 +13,7 @@ tqdm==4.51.0
 ttach==0.0.3
 wandb==0.12.1
 ```
-You can install type `pip install -r requirements.txt`
+You can install requirements by typing  `pip install -r requirements.txt`
 
 
 # Usage
