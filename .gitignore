@@ -2,4 +2,6 @@ template/train.py
 */*_checkpoints
 /no-use
 __pycache__
-
+/wandb
+/nohup.out
+submission.csv
