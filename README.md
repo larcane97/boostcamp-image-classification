@@ -1,6 +1,6 @@
 # AI Boostcamp P Stage Mask Classification
-this codes is about to AI Boostcamp P stage Mask Classification competition.  
-Below are code usage and My compeitions review.  
+This codes is about to AI Boostcamp P stage Mask Classification competition.  
+Below are code usage and My competitions review.  
 
 # Requirements
 ```
