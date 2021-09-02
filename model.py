@@ -152,7 +152,7 @@ class MultiDropoutEfficientB4(nn.Module):
         #return self.classifier(x)
 
 class MultiDropoutEfficientLite0(nn.Module):
-    def __init__(self,name='efficientnet_lite0',device='cuda',classes=18,drop_num=10,p=0.8):
+    def __init__(self,name='efficientnet_lite0',device='cuda',classes=18,drop_num=5,p=0.5):
         super(MultiDropoutEfficientLite0,self).__init__()
         self.name='_'.join(['multi','dropout',name])
         self.device=device
