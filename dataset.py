@@ -140,16 +140,10 @@ class PseudoMaskDataSet(torch.utils.data.Dataset):
                  
 
 class TestDataset(torch.utils.data.Dataset):
-    def __init__(self,image_paths,transform=albumentations.Resize(256,256),pseudo_label=None,pseudo_label_path=None):
+    def __init__(self,image_paths,transform=albumentations.Resize(224,224)):
         self.image_paths = image_paths
         self.transform = transform
-        self.pseudo_label_path=pseudo_label_path
-        self.pseudo_label = pseudo_label
-        if pseudo_label != None:
-            self.labels = pseudo_label
-        elif pseudo_label_path:
-            self.labels = pd.read_csv(pseudo_label_path)['ans']
-        
+    
     def __len__(self):
         return len(self.image_paths)
     
@@ -158,9 +152,7 @@ class TestDataset(torch.utils.data.Dataset):
         
         if self.transform:
             image = self.transform(image=image)['image'].float()
-        
-        if self.pseudo_label_path or self.pseudo_label != None:
-            return image, self.labels[idx]
+
         return image
 
 class CustomSubset(torch.utils.data.Subset):
