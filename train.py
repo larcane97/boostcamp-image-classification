@@ -116,9 +116,9 @@ def train(config):
         train_set = dataset.CustomSubset(mask_dataset,train_idx,train_trsfm)
         val_set = dataset.CustomSubset(mask_dataset,val_idx,val_trsfm)
         train_loader = torch.utils.data.DataLoader(train_set, batch_size=BATCH_SIZE,\
-             shuffle=True, num_workers=4, drop_last=True)
+             shuffle=True, num_workers=4, drop_last=True, pin_memory=torch.cuda.is_available())
         val_loader = torch.utils.data.DataLoader(val_set, batch_size=BATCH_SIZE,\
-            shuffle=True, num_workers=4, drop_last=True)
+            shuffle=True, num_workers=4, drop_last=True, pin_memory=torch.cuda.is_available())
         
         # Model Define
         ''' [수정] model config json 추가!!'''
