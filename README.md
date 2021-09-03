@@ -60,6 +60,7 @@ You must have **mask dataset** and this **data directory structure** before exec
 --pseudo_label : pseudo label usage, Should write pseudo.csv location at pseudo_csv option, type=boolean_string, default=False
 --pseudo_csv : pseudo label usage, type=str, default=/opt/ml/input/data/train/pseudo.csv
 --wandb : logging in WandB, type=boolean_string, default=True
+--patience : early stopping patience number, type=Int, default=5
 ```
 
 - ex. `python3 train.py --epochs 30 --file_name my_test_net --mix_up True --seed 42 --pseudo_label True --wandb False`
