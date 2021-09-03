@@ -27,6 +27,7 @@ import warnings
 from sklearn.model_selection import StratifiedKFold
 import ttach as tta
 
+# custom module
 import model
 import dataset
 from dataset import MaskAugmentation
@@ -46,6 +47,8 @@ def seed_everything(seed):
     torch.backends.cudnn.benchmark = True
 
 def train(config):
+    ''' Train model and Inference Test data '''
+    
     print('='*100)
     print('start...')
     print(config)
@@ -103,7 +106,6 @@ def train(config):
     
     # OOF configuration
     off_pred = None # Out-Of-Fold predictions
-    nets = [] # Out-Of-Fold networks
     
     ## training
     for i,(train_idx,val_idx) in enumerate(s_kfold.split\
@@ -122,7 +124,7 @@ def train(config):
         print('='*100)
         print(f"{i+1}_model : [{net.name}]")
 
-        # Other Define
+        # Criterion, optimizer, scheduler
         if MIX_UP:
             criterion = timm.loss.SoftTargetCrossEntropy()
         else:
@@ -139,8 +141,8 @@ def train(config):
             wandb.watch(net)
 
         # for early stopping
-        patience = 6
-        couonter=0
+        patience = config.patience
+        counter=0
         # for saving best model parameter
         best_val_loss = np.inf
 
@@ -183,7 +185,8 @@ def train(config):
                     print(
                     f"Epoch[{epoch+1:4}/{EPOCHS:4}]({idx + 1}/{len(train_loader)}) || "
                     f"training loss {train_loss:4.4} || training accuracy {train_acc:4.2%} || f1 score {train_f1:.2f}")
-                    '''[수정] WandB or TensorBoard 추가 '''
+
+                    ## logging by wandb
                     if config.wandb:
                         wandb.log({'train_loss':train_loss, 'train_accuracy':train_acc, 'train_f1':train_f1})
                     
@@ -232,6 +235,7 @@ def train(config):
                 val_acc = float(acc_items_list[0]/acc_items_list[1])
                 val_f1 = np.mean(f1_list)
                 val_loss = np.mean(loss_list)
+                # logging by wandb
                 if config.wandb:
                     wandb.log({'validation_loss':val_loss, 'valication_accuracy':val_acc, 'validation_f1':val_f1})
 
@@ -319,6 +323,7 @@ if __name__ == '__main__':
     parser.add_argument('--pseudo_label',type=bool,default=False,help='pseudo label usage')
     parser.add_argument('--pseudo_csv',type=str,default='/opt/ml/input/data/train/pseudo.csv',help='pseudo label usage')
     parser.add_argument('--wandb',type=bool,default=True,help='logging in WandB')
+    parser.add_argument('--patience',type=int,default=5,help='early stopping patience number')
     # Container environment
     parser.add_argument('--data_dir', type=str, default=os.environ.get('SM_CHANNEL_TRAIN', '/opt/ml/input/data/train/images'))
     parser.add_argument('--model_dir', type=str, default=os.environ.get('SM_MODEL_DIR', './model'))
