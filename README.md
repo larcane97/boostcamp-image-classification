@@ -15,6 +15,21 @@ wandb==0.12.1
 ```
 You can install requirements by typing  `pip install -r requirements.txt`
 
+```
++-- train/
+|   +-- images/
+|       +-- 000001_female_Asian_45/
+|       +-- 000002_female_Asian_52/
+|       +-- …
+|   +-- new_standard.csv
++-- eval/
+    +-- images/
+        +-- 814bff668ae5b9c595ceabcbb6e1ea84634afbd6.jpg
+        +-- 819f47db0617b3ea9725ef1f6f58e56561e7cb4b.jpg
+        +-- …
+    +-- info.csv
+```
+You must have **mask dataset** and this **data directory structure** before execution.
 
 # Usage
 **BASIC**
