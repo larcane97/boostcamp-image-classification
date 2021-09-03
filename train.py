@@ -66,7 +66,7 @@ def train(config):
     n_splits = config.kfold_splits
     s_kfold = StratifiedKFold(n_splits=n_splits)
 
-    # HyperParameter configuration
+    # HyperParameter & Constant Loading
     LEARNING_RATE = config.lr
     BATCH_SIZE = config.batch_size
     EPOCHS = config.epochs
@@ -80,13 +80,9 @@ def train(config):
     else:
         mask_dataset = dataset.MaskDataSet(config.train_csv)
     
-    test_dir = pathlib.Path(config.test_dir)
-    submission = pd.read_csv(test_dir/'info.csv')
-    image_dir = test_dir/'images'
-    image_paths = [image_dir/image_id for image_id in submission.ImageID]
-    test_dataset = dataset.TestDataset(image_paths,transform=val_trsfm)
+    test_dataset = dataset.TestDataset(config.test_dir,transform=val_trsfm)
+    submission = test_dataset.submission
     test_loader = torch.utils.data.DataLoader(test_dataset,shuffle=False)
-
     # cut-mix, mix-up configuration
     ''' [수정] mixup_args config json'''
     if MIX_UP:

@@ -140,10 +140,13 @@ class PseudoMaskDataSet(torch.utils.data.Dataset):
                  
 
 class TestDataset(torch.utils.data.Dataset):
-    def __init__(self,image_paths,transform=albumentations.Resize(224,224)):
-        self.image_paths = image_paths
+    def __init__(self,test_dir,transform=albumentations.Resize(224,224)):
         self.transform = transform
-    
+        self.submission = pd.read_csv(os.path.join(test_dir,'info.csv'))
+        
+        image_dir = os.path.join(test_dir,'images')
+        self.image_paths = [image_dir/image_id for image_id in submission.ImageID]
+        
     def __len__(self):
         return len(self.image_paths)
     
